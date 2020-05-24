@@ -44,7 +44,7 @@ typedef struct
 
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
-void randomNum(context_t* ctx);
+
 
 void randomNum(context_t *ctx)
 {
@@ -82,7 +82,13 @@ void transport_init(mysocket_t sd, bool_t is_active)
        pack->hdr.th_ack = NULL;
        pack->hdr.th_flags = TH_SYN;
        pack->hdr.th_win = htonl(WINDOWLENGTH);
-       stcp_network_send(sd, (void *) pack, sizeof(packet), NULL);
+       printf("\n", );
+       ssize_t sent = stcp_network_send(sd, (void *) pack, sizeof(packet), NULL);
+       if (sent < 0){
+         free(ctx);
+         free(pack);
+         return;
+       }
 
        ctx->connection_state = SYN_SEND;
 
@@ -91,14 +97,24 @@ void transport_init(mysocket_t sd, bool_t is_active)
        stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
 
        //recieved acknowledgement
-       stcp_network_recv(sd, (void *) pack, sizeof(packet));
-
+       ssize_t recv = stcp_network_recv(sd, (void *) pack, sizeof(packet));
+       if((unsigned int)recv < sizeof(packet)){
+         free(ctx);
+         free(pack);
+         return;
+       }
+       printf("Recieved packet with seq, ack: ",pack->hdr.th_seq, pack->hdr.th_ack, "\n");
        //build acknowledgement packet and send it
        pack->hdr.th_seq = pack->hdr.th_seq;
        pack->hdr.th_ack = pack->hdr.th_seq + 1;
        pack->hdr.th_flags = TH_ACK;
        pack->hdr.th_win = htonl(WINDOWLENGTH);
-       stcp_network_send(sd, (void *) pack, sizeof(packet),NULL);
+       sent = stcp_network_send(sd, (void *) pack, sizeof(packet),NULL);
+       if (sent < 0){
+         free(ctx);
+         free(pack);
+         return;
+       }
      }
      //not active and must listen
      else
@@ -129,6 +145,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
     /* do any cleanup here */
     free(ctx);
+    free(pack);
 }
 
 
