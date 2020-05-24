@@ -145,11 +145,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
            return;
          }
        }
-       else{
-         free(ctx);
-         free(pack);
-         return;
-       }
      }
     ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
