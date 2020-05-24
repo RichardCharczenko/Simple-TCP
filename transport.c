@@ -110,7 +110,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
        pack->hdr.th_flags = TH_ACK;
        pack->hdr.th_win = htonl(WINDOWLENGTH);
        sent = stcp_network_send(sd, (void *) pack, sizeof(packet),NULL);
-       if (sent < 0){
+       if (sent < 0)
+       {
          free(ctx);
          free(pack);
          return;
@@ -135,7 +136,19 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
          //wait for response
          stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
-         stcp_app_recv(sd, (void *) pack, sizeof(packet));
+         ssize_t recv = stcp_app_recv(sd, (void *) pack, sizeof(packet));
+
+         if((unsigned int) recv < sizeof(packet))
+         {
+           free(ctx);
+           free(pack);
+           return;
+         }
+       }
+       else{
+         free(ctx);
+         free(pack);
+         return;
        }
      }
     ctx->connection_state = CSTATE_ESTABLISHED;
