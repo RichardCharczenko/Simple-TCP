@@ -22,7 +22,7 @@
 #include "transport.h"
 
 
-enum { CSTATE_ESTABLISHED, SYN_SEND, SYN_RECV, LISTEN };    /* you should have more states */
+enum { CSTATE_ESTABLISHED, SYN_SEND, SYN_RECV, LISTEN, ACK_SEND, ACK_RECV };    /* you should have more states */
 const int SIZE = 536; //maximum segment size
 const long WINDOWLENGTH = 3072;
 /* this structure is global to a mysocket descriptor */
@@ -60,6 +60,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
     packet *pack;
+    unsigned int event;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
     assert(ctx);
@@ -94,10 +95,17 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
        //wait for acknowledgement
        tcp_seq ack_expected = pack->hdr.th_seq+1;
-       stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
+       event = stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
+       if (event == APP_CLOSE_REQUESTED)
+       {
+         free(ctx);
+         free(pack);
+         return;
+       }
 
        //recieved acknowledgement
        ssize_t recv = stcp_network_recv(sd, (void *) pack, sizeof(packet));
+       ctx->connection_state = ACK_RECV;
        if((unsigned int)recv < sizeof(packet)){
          free(ctx);
          free(pack);
@@ -110,6 +118,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
        pack->hdr.th_flags = TH_ACK;
        pack->hdr.th_win = htonl(WINDOWLENGTH);
        sent = stcp_network_send(sd, (void *) pack, sizeof(packet),NULL);
+       ctx->connection_state = ACK_SEND;
        if (sent < 0)
        {
          free(ctx);
@@ -121,23 +130,35 @@ void transport_init(mysocket_t sd, bool_t is_active)
      else
      {
        ctx->connection_state = LISTEN;
-       stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
-
-       stcp_app_recv(sd, (void *) pack, sizeof(packet));
+       event = stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
+       if (event == APP_CLOSE_REQUESTED)
+       {
+         free(ctx);
+         free(pack);
+         return;
+       }
+       stcp_netowork_recv(sd, (void *) pack, sizeof(packet));
        ctx->connection_state = SYN_RECV;
 
-       if(pack->hdr.flags & TH_SYN)
+       if(pack->hdr.flags == TH_SYN)
        {
          pack->hdr.th_ack = pack->hdr.th_seq + 1;
          pack->hdr.th_seq = ctx->initial_sequence_num;
          pack->hdr.th_flags = TH_ACK|TH_SYN;
          pack->hdr.th_win = htonl(WINDOWLENGTH);
          stcp_network_send(sd, (void *) pack, sizeof(packet), NULL);
+         ctx->connection_state = ACK_SEND;
 
          //wait for response
-         stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
-         ssize_t recv = stcp_app_recv(sd, (void *) pack, sizeof(packet));
-
+         event = stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
+         if (event == APP_CLOSE_REQUESTED)
+         {
+           free(ctx);
+           free(pack);
+           return;
+         }
+         ssize_t recv = stcp_network_recv(sd, (void *) pack, sizeof(packet));
+         ctx->connection_state = ACK_RECV;
          if((unsigned int) recv < sizeof(packet))
          {
            free(ctx);
