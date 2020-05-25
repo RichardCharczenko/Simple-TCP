@@ -76,14 +76,14 @@ void transport_init(mysocket_t sd, bool_t is_active)
      * if connection fails; to do so, just set errno appropriately (e.g. to
      * ECONNREFUSED, etc.) before calling the function.
      */
-
+     printf("establishing connection\n");
      if(is_active){
+       printf("is active, building and sending SYN\n");
        //build SYN packet and send it
        pack->hdr.th_seq = ctx->initial_sequence_num;
        pack->hdr.th_ack = NULL;
        pack->hdr.th_flags = TH_SYN;
        pack->hdr.th_win = htonl(WINDOWLENGTH);
-       printf("\n", );
        ssize_t sent = stcp_network_send(sd, (void *) pack, sizeof(packet), NULL);
        if (sent < 0){
          free(ctx);
@@ -111,7 +111,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
          free(pack);
          return;
        }
-       printf("Recieved packet with seq, ack: ",pack->hdr.th_seq, pack->hdr.th_ack, "\n");
+       printf("Recieved packet with seq: %i \n", (int)pack->hdr.th_seq);
+       printf("Recieved packet with seq: %i \n", (int)pack->hdr.th_ack);
        //build acknowledgement packet and send it
        pack->hdr.th_seq = pack->hdr.th_seq;
        pack->hdr.th_ack = pack->hdr.th_seq + 1;
@@ -129,6 +130,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
      //not active and must listen
      else
      {
+       printf("Listening\n");
        ctx->connection_state = LISTEN;
        event = stcp_wait_for_event(sd, NETWORK_DATA|APP_CLOSE_REQUESTED, NULL);
        if (event == APP_CLOSE_REQUESTED)
@@ -137,10 +139,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
          free(pack);
          return;
        }
-       stcp_netowork_recv(sd, (void *) pack, sizeof(packet));
+       stcp_network_recv(sd, (void *) pack, sizeof(packet));
        ctx->connection_state = SYN_RECV;
 
-       if(pack->hdr.flags == TH_SYN)
+       if(pack->hdr.th_flags == TH_SYN)
        {
          pack->hdr.th_ack = pack->hdr.th_seq + 1;
          pack->hdr.th_seq = ctx->initial_sequence_num;
@@ -167,6 +169,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
          }
        }
      }
+     printf("Connection established, entering control loop\n");
     ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
 
